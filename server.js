@@ -7,14 +7,43 @@ const bodyParser = require('body-parser');
 const app = express();
 const port = 3000;
 
-// Configuração do Banco de Dados PostgreSQL
-// ALTERE AQUI COM SUA SENHA DO POSTGRES
-const pool = new Pool({
-  user: 'postgres',
+// --- CONFIGURAÇÃO DO BANCO DE DADOS ---
+// EDITE AQUI SE SEU USUÁRIO/SENHA FOREM DIFERENTES
+const dbConfig = {
+  user: 'postgres',       // Seu usuário do PostgreSQL (ex: postgres, admin)
   host: 'localhost',
   database: 'confeccao_db',
-  password: 'admin', // <--- COLOQUE SUA SENHA DO POSTGRES AQUI
+  password: 'admin',      // A senha que você definiu ao instalar ou criar o usuário
   port: 5432,
+};
+
+const pool = new Pool(dbConfig);
+
+// Teste de conexão imediato ao iniciar
+pool.connect((err, client, release) => {
+  if (err) {
+    console.error('\n\x1b[31m---------------------------------------------------------');
+    console.error('ERRO CRÍTICO AO CONECTAR NO POSTGRESQL:');
+    console.error('---------------------------------------------------------');
+    console.error('Código do Erro:', err.code);
+    if (err.code === '28P01') {
+      console.error('MOTIVO: Senha incorreta ou usuário inexistente.');
+      console.error(`Verifique se o usuário "${dbConfig.user}" e a senha "${dbConfig.password}" estão corretos.`);
+    } else if (err.code === '3D000') {
+      console.error(`MOTIVO: O banco de dados "${dbConfig.database}" não existe.`);
+      console.error('SOLUÇÃO: Abra o pgAdmin e execute: CREATE DATABASE confeccao_db;');
+    } else if (err.code === 'ECONNREFUSED') {
+      console.error('MOTIVO: O PostgreSQL não está rodando ou a porta está errada.');
+    } else {
+        console.error('Detalhes:', err.message);
+    }
+    console.error('---------------------------------------------------------\x1b[0m\n');
+  } else {
+    console.log('\n\x1b[32m---------------------------------------------------------');
+    console.log('✅ SUCESSO: Conectado ao PostgreSQL corretamente!');
+    console.log('---------------------------------------------------------\x1b[0m\n');
+    release();
+  }
 });
 
 app.use(cors());
@@ -25,7 +54,10 @@ app.get('/api/users', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM users');
     res.json(rows);
-  } catch (err) { res.status(500).json(err); }
+  } catch (err) { 
+    console.error(err);
+    res.status(500).json({error: "Erro ao buscar usuários", details: err.message}); 
+  }
 });
 
 app.post('/api/users', async (req, res) => {
@@ -33,7 +65,10 @@ app.post('/api/users', async (req, res) => {
   try {
     await pool.query('INSERT INTO users (id, name, username, password, role) VALUES ($1, $2, $3, $4, $5)', [id, name, username, password, role]);
     res.status(201).send();
-  } catch (err) { res.status(500).json(err); }
+  } catch (err) { 
+    console.error(err);
+    res.status(500).json({error: "Erro ao criar usuário", details: err.message}); 
+  }
 });
 
 app.delete('/api/users/:id', async (req, res) => {
@@ -48,7 +83,14 @@ app.get('/api/products', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM products');
     res.json(rows);
-  } catch (err) { res.status(500).json(err); }
+  } catch (err) { 
+    // Se a tabela não existir, retorna array vazio para não quebrar o front
+    if (err.code === '42P01') { 
+        console.warn("Tabela 'products' não encontrada. Rodou o schema.sql?");
+        return res.json([]); 
+    }
+    res.status(500).json(err); 
+  }
 });
 
 app.post('/api/products', async (req, res) => {
@@ -59,7 +101,7 @@ app.post('/api/products', async (req, res) => {
       [id, reference, color, grid_type, stock, enforce_stock, base_price]
     );
     res.status(201).send();
-  } catch (err) { res.status(500).json(err); }
+  } catch (err) { console.error(err); res.status(500).json(err); }
 });
 
 app.put('/api/products/:id', async (req, res) => {
