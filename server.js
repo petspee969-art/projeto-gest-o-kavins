@@ -13,7 +13,7 @@ const dbConfig = {
   user: 'postgres',       // Seu usuário do PostgreSQL (ex: postgres, admin)
   host: 'localhost',
   database: 'confeccao_db',
-  password: 'admin',      // A senha que você definiu ao instalar ou criar o usuário
+  password: '123',      // A senha que você definiu ao instalar ou criar o usuário
   port: 5432,
 };
 
