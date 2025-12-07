@@ -13,7 +13,10 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "lucide-react": "^0.554.0",
-    "recharts": "^3.5.0"
+    "recharts": "^3.5.0",
+    "path": "^0.12.7",
+    "url": "^0.11.4",
+    "module": "^2.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
