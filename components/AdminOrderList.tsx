@@ -1206,7 +1206,7 @@ const AdminOrderList: React.FC = () => {
         </div>
       )}
 
-      {/* Picking Modal (Was Missing) */}
+      {/* Picking Modal (New Compact Card Layout) */}
       {pickingOrder && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print p-4">
           <div className="bg-white rounded-lg w-full max-w-5xl max-h-[95vh] flex flex-col shadow-2xl">
@@ -1262,136 +1262,112 @@ const AdminOrderList: React.FC = () => {
                       </div>
                   </div>
 
-                  {/* Items Table */}
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                      <table className="w-full text-sm text-left">
-                          <thead className="bg-gray-100 text-gray-700 font-bold uppercase text-xs">
-                              <tr>
-                                  <th className="p-3 w-10"></th>
-                                  <th className="p-3">Ref / Cor</th>
-                                  <th className="p-3">Tamanho</th>
-                                  <th className="p-3 text-center bg-blue-50 w-24">Qtd Pedida</th>
-                                  <th className="p-3 text-center bg-green-50 w-24">Qtd Separada</th>
-                                  <th className="p-3 text-center w-24">Estoque</th>
-                              </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100">
-                              {pickingItems.map((item, idx) => {
-                                  // Find product to show stock info
-                                  const prod = products.find(p => p.reference === item.reference && p.color === item.color);
-                                  const isEditing = editingItemIdx === idx;
+                  {/* Items List (Compact Cards) */}
+                  <div className="space-y-3">
+                      {pickingItems.map((item, idx) => {
+                          // Find product to show stock info
+                          const prod = products.find(p => p.reference === item.reference && p.color === item.color);
+                          const isEditing = editingItemIdx === idx;
 
-                                  // Calculate totals for row styling
-                                  const totalOrdered = (Object.values(item.sizes) as number[]).reduce((a, b) => a + b, 0);
-                                  const totalPicked = (Object.values(item.picked || {}) as number[]).reduce((a, b) => a + b, 0);
-                                  
-                                  // Row Style
-                                  let rowClass = "";
-                                  if (totalPicked === 0) rowClass = "opacity-80"; // Not started
-                                  else if (totalPicked < totalOrdered) rowClass = "bg-yellow-50"; // Partial
-                                  else if (totalPicked === totalOrdered) rowClass = "bg-green-50"; // Complete
-                                  else if (totalPicked > totalOrdered) rowClass = "bg-red-50"; // Over
+                          // Calculate totals for styling
+                          const totalOrdered = (Object.values(item.sizes) as number[]).reduce((a, b) => a + b, 0);
+                          const totalPicked = (Object.values(item.picked || {}) as number[]).reduce((a, b) => a + b, 0);
+                          
+                          // Row Style
+                          let rowClass = "border-gray-200 bg-white";
+                          if (totalPicked === 0) rowClass = "border-gray-200 bg-white opacity-90"; // Not started
+                          else if (totalPicked < totalOrdered) rowClass = "border-yellow-300 bg-yellow-50"; // Partial
+                          else if (totalPicked === totalOrdered) rowClass = "border-green-300 bg-green-50"; // Complete
+                          else if (totalPicked > totalOrdered) rowClass = "border-red-300 bg-red-50"; // Over
 
-                                  const allRowSizes = Array.from(new Set([
-                                      ...Object.keys(item.sizes),
-                                      ...Object.keys(item.picked || {})
-                                  ])).sort();
+                          const allRowSizes = Array.from(new Set([
+                              ...Object.keys(item.sizes),
+                              ...Object.keys(item.picked || {})
+                          ])).sort();
 
-                                  return (
-                                      <React.Fragment key={idx}>
-                                          {/* Header Row for Item */}
-                                          <tr className={`border-t-4 border-gray-50 ${rowClass}`}>
-                                              <td className="p-3 text-center">
-                                                  <button onClick={() => handleRemoveItem(idx)} className="text-red-400 hover:text-red-600"><Trash className="w-4 h-4" /></button>
-                                              </td>
-                                              <td className="p-3 font-bold text-gray-800">
-                                                  {item.reference} <br/> 
-                                                  <span className="text-xs uppercase font-normal text-gray-500">{item.color}</span>
-                                              </td>
-                                              <td colSpan={4} className="p-0">
-                                                  {/* Sub-table for Sizes */}
-                                                  <table className="w-full">
-                                                      <tbody>
-                                                          {allRowSizes.map(size => {
-                                                              const orderedQty = item.sizes[size] || 0;
-                                                              const pickedQty = item.picked?.[size] !== undefined ? item.picked[size] : '';
-                                                              const stockQty = prod?.stock?.[size] || 0;
-                                                              
-                                                              // Determine style for picked input
-                                                              let inputBg = "bg-white";
-                                                              if (typeof pickedQty === 'number') {
-                                                                  if (pickedQty === orderedQty) inputBg = "bg-green-100 text-green-800 font-bold";
-                                                                  else if (pickedQty > orderedQty) inputBg = "bg-red-100 text-red-800 font-bold";
-                                                                  else inputBg = "bg-yellow-50";
-                                                              }
+                          return (
+                              <div key={idx} className={`rounded-lg border shadow-sm p-3 ${rowClass}`}>
+                                  {/* Item Header */}
+                                  <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-200/50">
+                                      <div>
+                                          <span className="font-bold text-gray-800 text-lg mr-2">{item.reference}</span>
+                                          <span className="text-xs font-bold uppercase text-gray-600 bg-white border border-gray-200 px-2 py-0.5 rounded">{item.color}</span>
+                                      </div>
+                                      
+                                      <div className="flex items-center gap-3">
+                                           <div className="text-xs font-bold text-gray-500 bg-white px-2 py-1 rounded border border-gray-200 shadow-sm">
+                                                Ped: <span className="text-blue-600 text-sm">{totalOrdered}</span> 
+                                                <span className="mx-1">/</span>
+                                                Sep: <span className={`text-sm ${totalPicked >= totalOrdered ? 'text-green-600' : 'text-orange-500'}`}>{totalPicked}</span>
+                                           </div>
 
-                                                              return (
-                                                                  <tr key={size} className="border-b border-gray-50 last:border-0">
-                                                                      <td className="p-2 pl-4 text-xs font-bold w-1/4">{size}</td>
-                                                                      
-                                                                      {/* QTD PEDIDA (Editable Only in Edit Mode) */}
-                                                                      <td className="p-2 text-center bg-blue-50 w-24">
-                                                                          {isEditing ? (
-                                                                              <input 
-                                                                                  type="number"
-                                                                                  className="w-16 p-1 border rounded text-center text-blue-800 font-bold"
-                                                                                  value={orderedQty || ''}
-                                                                                  onChange={(e) => handleOrderQtyChange(idx, size, e.target.value)}
-                                                                              />
-                                                                          ) : (
-                                                                              <span className="text-blue-800 font-bold">{orderedQty}</span>
-                                                                          )}
-                                                                      </td>
+                                           <button 
+                                                onClick={() => setEditingItemIdx(editingItemIdx === idx ? null : idx)} 
+                                                className={`p-1.5 rounded-full hover:bg-black/5 transition ${isEditing ? 'text-blue-600 bg-blue-100' : 'text-gray-400'}`}
+                                                title="Editar Quantidade Pedida"
+                                           >
+                                                {isEditing ? <Check className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
+                                           </button>
 
-                                                                      {/* QTD SEPARADA (Always Editable unless finalizing) */}
-                                                                      <td className="p-2 text-center bg-green-50 w-24">
-                                                                           <input 
-                                                                              type="number"
-                                                                              min="0"
-                                                                              className={`w-16 p-1 border rounded text-center outline-none focus:ring-2 focus:ring-green-500 ${inputBg}`}
-                                                                              value={pickedQty}
-                                                                              onChange={(e) => handlePickingChange(idx, size, e.target.value)}
-                                                                              onKeyDown={(e) => {
-                                                                                  if (e.key === 'Enter') {
-                                                                                      // Auto-fill logic could go here
-                                                                                  }
-                                                                              }}
-                                                                          />
-                                                                      </td>
+                                           <button onClick={() => handleRemoveItem(idx)} className="text-red-400 hover:text-red-600 p-1.5 hover:bg-red-50 rounded-full transition">
+                                                <Trash className="w-4 h-4" />
+                                           </button>
+                                      </div>
+                                  </div>
 
-                                                                      {/* STOCK INFO */}
-                                                                      <td className="p-2 text-center w-24 text-xs text-gray-400">
-                                                                          Est: {stockQty}
-                                                                      </td>
-                                                                  </tr>
-                                                              );
-                                                          })}
-                                                          {/* Total Row for Item */}
-                                                          <tr className="bg-gray-100 text-xs font-bold">
-                                                              <td className="p-2 text-right">TOTAIS ITEM:</td>
-                                                              <td className="p-2 text-center text-blue-700">{totalOrdered}</td>
-                                                              <td className="p-2 text-center text-green-700">{totalPicked}</td>
-                                                              <td>
-                                                                  {!isEditing ? (
-                                                                      <button onClick={() => setEditingItemIdx(idx)} className="ml-2 text-blue-500 hover:text-blue-700 underline text-[10px]">
-                                                                          Editar Pedido
-                                                                      </button>
-                                                                  ) : (
-                                                                      <button onClick={() => setEditingItemIdx(null)} className="ml-2 text-green-600 hover:text-green-800 flex items-center justify-center w-full">
-                                                                          <Check className="w-4 h-4" />
-                                                                      </button>
-                                                                  )}
-                                                              </td>
-                                                          </tr>
-                                                      </tbody>
-                                                  </table>
-                                              </td>
-                                          </tr>
-                                      </React.Fragment>
-                                  );
-                              })}
-                          </tbody>
-                      </table>
+                                  {/* Horizontal Sizes Grid */}
+                                  <div className="flex flex-wrap gap-2">
+                                      {allRowSizes.map(size => {
+                                          const orderedQty = item.sizes[size] || 0;
+                                          const pickedQty = item.picked?.[size] !== undefined ? item.picked[size] : '';
+                                          const stockQty = prod?.stock?.[size] || 0;
+                                          
+                                          // Style for the Picked Input
+                                          let inputBg = "bg-white border-gray-300";
+                                          if (typeof pickedQty === 'number') {
+                                              if (pickedQty === orderedQty) inputBg = "bg-green-100 text-green-800 border-green-300 font-bold";
+                                              else if (pickedQty > orderedQty) inputBg = "bg-red-100 text-red-800 border-red-300 font-bold";
+                                              else inputBg = "bg-yellow-50 border-yellow-300";
+                                          }
+
+                                          return (
+                                              <div key={size} className="flex flex-col items-center bg-white border border-gray-200 rounded p-1.5 min-w-[70px] shadow-sm">
+                                                  <span className="text-xs font-bold text-gray-700 mb-1">{size}</span>
+                                                  
+                                                  <div className="flex items-center gap-1 mb-1">
+                                                       {/* Ordered */}
+                                                       {isEditing ? (
+                                                           <input 
+                                                              type="number"
+                                                              className="w-8 text-center border-b border-blue-400 text-blue-800 font-bold text-sm focus:outline-none focus:border-blue-600"
+                                                              value={orderedQty || ''}
+                                                              onChange={(e) => handleOrderQtyChange(idx, size, e.target.value)}
+                                                           />
+                                                       ) : (
+                                                           <span className="text-sm font-bold text-blue-600 w-6 text-center">{orderedQty}</span>
+                                                       )}
+                                                       
+                                                       <span className="text-gray-300 text-xs">/</span>
+                                                       
+                                                       {/* Picked Input */}
+                                                       <input 
+                                                          type="number"
+                                                          min="0"
+                                                          className={`w-10 p-0.5 text-center text-sm border rounded outline-none focus:ring-2 focus:ring-blue-400 ${inputBg}`}
+                                                          value={pickedQty}
+                                                          onChange={(e) => handlePickingChange(idx, size, e.target.value)}
+                                                      />
+                                                  </div>
+                                                  
+                                                  {/* Stock */}
+                                                  <div className="text-[9px] text-gray-400 font-medium">Est: {stockQty}</div>
+                                              </div>
+                                          );
+                                      })}
+                                  </div>
+                              </div>
+                          );
+                      })}
                   </div>
              </div>
 
@@ -1399,21 +1375,20 @@ const AdminOrderList: React.FC = () => {
              <div className="p-4 border-t bg-white rounded-b-lg shadow-up">
                  {!showRomaneioOptions ? (
                      <div className="flex justify-between items-center">
-                         <div className="text-sm text-gray-500">
-                             <p>Confira os itens bipados/separados na coluna verde.</p>
-                             <p>Use "Adicionar Item" se houver extras.</p>
+                         <div className="text-sm text-gray-500 hidden md:block">
+                             <p>Confira os itens. Use os campos brancos para informar o que foi separado.</p>
                          </div>
-                         <div className="flex gap-3">
+                         <div className="flex gap-3 w-full md:w-auto">
                              <button 
                                  onClick={savePickingSimple}
                                  disabled={savingPicking}
-                                 className="px-6 py-3 bg-gray-200 text-gray-800 rounded font-bold hover:bg-gray-300 transition"
+                                 className="flex-1 md:flex-none px-6 py-3 bg-gray-200 text-gray-800 rounded font-bold hover:bg-gray-300 transition"
                              >
                                  {savingPicking ? <Loader2 className="animate-spin" /> : 'Salvar Progresso'}
                              </button>
                              <button 
                                  onClick={() => setShowRomaneioOptions(true)}
-                                 className="px-6 py-3 bg-orange-600 text-white rounded font-bold hover:bg-orange-700 transition shadow-lg flex items-center"
+                                 className="flex-1 md:flex-none px-6 py-3 bg-orange-600 text-white rounded font-bold hover:bg-orange-700 transition shadow-lg flex items-center justify-center"
                              >
                                  <Truck className="w-5 h-5 mr-2" />
                                  Baixar / Finalizar
