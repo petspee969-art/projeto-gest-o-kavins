@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Order, OrderItem, ProductDef, SIZE_GRIDS, User, Role } from '../types';
-import { getOrders, updateOrderStatus, saveOrderPicking, getProducts, updateOrderRomaneio, getUsers, getRepPrices, addOrder, generateUUID } from '../services/storageService';
+import { getOrders, updateOrderStatus, saveOrderPicking, getProducts, updateOrderRomaneio, getUsers, getRepPrices, addOrder, generateUUID, updateOrderPartialStatus } from '../services/storageService';
 import { supabase } from '../services/supabaseClient'; // Importação do Supabase para Realtime
 import { Printer, Calculator, CheckCircle, X, Loader2, PackageOpen, Save, Lock, Unlock, AlertTriangle, Bell, RefreshCw, Plus, Trash, Search, Edit2, Check, Truck, Filter, User as UserIcon, Split, Scissors } from 'lucide-react';
 
@@ -494,8 +494,8 @@ const AdminOrderList: React.FC = () => {
           // Depois define Romaneio e flag Partial
           await updateOrderRomaneio(pickingOrder.id, inputRomaneio);
           
-          // Marca flag partial manualmente via update (precisamos fazer isso pois saveOrderPicking não seta flags arbitrárias)
-          await supabase.from('orders').update({ is_partial: true, status: 'printed' }).eq('id', pickingOrder.id);
+          // Marca flag partial manualmente via update
+          await updateOrderPartialStatus(pickingOrder.id, true, 'printed');
 
           // Refresh e Fechar
           await fetchData(true);

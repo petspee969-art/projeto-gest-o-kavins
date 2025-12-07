@@ -468,6 +468,14 @@ export const updateOrderStatus = async (id: string, status: 'open' | 'printed'):
   });
 };
 
+export const updateOrderPartialStatus = async (id: string, isPartial: boolean, status: 'open' | 'printed'): Promise<void> => {
+  await safeFetch(`${API_URL}/orders/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_partial: isPartial, status })
+  });
+};
+
 export const initializeStorage = () => {
   console.log("Serviço de armazenamento LOCAL (PostgreSQL) inicializado.");
 };
