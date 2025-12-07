@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Order, OrderItem, ProductDef, SIZE_GRIDS, User, Role } from '../types';
 import { getOrders, updateOrderStatus, saveOrderPicking, getProducts, updateOrderRomaneio, getUsers, getRepPrices, addOrder, generateUUID } from '../services/storageService';
@@ -1136,7 +1137,6 @@ const AdminOrderList: React.FC = () => {
       {showAggregation && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print p-2 md:p-4">
           <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
-            {/* ... Conteúdo do Modal de Soma ... */}
              <div className="p-4 md:p-6 border-b flex justify-between items-center bg-purple-50">
               <div>
                 <h2 className="text-lg md:text-xl font-bold text-purple-900 flex items-center">
@@ -1179,7 +1179,6 @@ const AdminOrderList: React.FC = () => {
                     <tr>
                         <td colSpan={2} className="border p-3 text-right">TOTAL:</td>
                         {ALL_SIZES.map(s => {
-                            // Fixed: Explicitly typed reduce parameters and ensured number type for arithmetic
                             const colTotal = aggregatedItems.reduce((acc: number, i: OrderItem) => {
                                 const val = i.sizes[s];
                                 const qty = typeof val === 'number' ? val : 0;
@@ -1188,7 +1187,6 @@ const AdminOrderList: React.FC = () => {
                             return <td key={s} className="border p-3 text-center">{colTotal || ''}</td>
                         })}
                         <td className="border p-3 text-right text-xl">
-                            {/* Fixed: Explicitly typed reduce parameters and ensured number type */}
                             {aggregatedItems.reduce((acc: number, i: OrderItem) => acc + (typeof i.totalQty === 'number' ? i.totalQty : 0), 0)}
                         </td>
                     </tr>
@@ -1204,6 +1202,275 @@ const AdminOrderList: React.FC = () => {
                  <Printer className="w-5 h-5 mr-2" /> Imprimir Lista
                </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Picking Modal (Was Missing) */}
+      {pickingOrder && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print p-4">
+          <div className="bg-white rounded-lg w-full max-w-5xl max-h-[95vh] flex flex-col shadow-2xl">
+             {/* Header Modal */}
+             <div className="p-4 border-b flex justify-between items-center bg-orange-50 rounded-t-lg">
+                  <div>
+                      <h2 className="text-xl font-bold text-orange-900 flex items-center">
+                          <PackageOpen className="w-6 h-6 mr-2" />
+                          Separação de Pedido #{pickingOrder.displayId}
+                      </h2>
+                      <p className="text-sm text-orange-800 mt-1">
+                          Cliente: <strong>{pickingOrder.clientName}</strong>
+                      </p>
+                  </div>
+                  <button onClick={() => setPickingOrder(null)} className="p-2 hover:bg-orange-100 rounded-full">
+                      <X className="w-6 h-6 text-orange-800" />
+                  </button>
+             </div>
+
+             {/* Content Modal */}
+             <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+                  
+                  {/* Add Extra Item Section */}
+                  <div className="mb-6 bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                      <h4 className="font-bold text-gray-700 mb-2 flex items-center">
+                          <Plus className="w-4 h-4 mr-2" /> Adicionar Item Extra ao Pedido
+                      </h4>
+                      <div className="flex flex-col md:flex-row gap-2">
+                          <select 
+                              className="border p-2 rounded flex-1" 
+                              value={addRef} 
+                              onChange={(e) => { setAddRef(e.target.value); setAddColor(''); }}
+                          >
+                              <option value="">Selecione Referência...</option>
+                              {uniqueRefs.map(r => <option key={r} value={r}>{r}</option>)}
+                          </select>
+                          <select 
+                              className="border p-2 rounded flex-1" 
+                              value={addColor} 
+                              onChange={(e) => setAddColor(e.target.value)}
+                              disabled={!addRef}
+                          >
+                              <option value="">Selecione Cor...</option>
+                              {availableColors.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                          <button 
+                              onClick={handleAddItem}
+                              disabled={!addRef || !addColor}
+                              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 font-bold"
+                          >
+                              Adicionar
+                          </button>
+                      </div>
+                  </div>
+
+                  {/* Items Table */}
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                      <table className="w-full text-sm text-left">
+                          <thead className="bg-gray-100 text-gray-700 font-bold uppercase text-xs">
+                              <tr>
+                                  <th className="p-3 w-10"></th>
+                                  <th className="p-3">Ref / Cor</th>
+                                  <th className="p-3">Tamanho</th>
+                                  <th className="p-3 text-center bg-blue-50 w-24">Qtd Pedida</th>
+                                  <th className="p-3 text-center bg-green-50 w-24">Qtd Separada</th>
+                                  <th className="p-3 text-center w-24">Estoque</th>
+                              </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                              {pickingItems.map((item, idx) => {
+                                  // Find product to show stock info
+                                  const prod = products.find(p => p.reference === item.reference && p.color === item.color);
+                                  const isEditing = editingItemIdx === idx;
+
+                                  // Calculate totals for row styling
+                                  const totalOrdered = (Object.values(item.sizes) as number[]).reduce((a, b) => a + b, 0);
+                                  const totalPicked = (Object.values(item.picked || {}) as number[]).reduce((a, b) => a + b, 0);
+                                  
+                                  // Row Style
+                                  let rowClass = "";
+                                  if (totalPicked === 0) rowClass = "opacity-80"; // Not started
+                                  else if (totalPicked < totalOrdered) rowClass = "bg-yellow-50"; // Partial
+                                  else if (totalPicked === totalOrdered) rowClass = "bg-green-50"; // Complete
+                                  else if (totalPicked > totalOrdered) rowClass = "bg-red-50"; // Over
+
+                                  const allRowSizes = Array.from(new Set([
+                                      ...Object.keys(item.sizes),
+                                      ...Object.keys(item.picked || {})
+                                  ])).sort();
+
+                                  return (
+                                      <React.Fragment key={idx}>
+                                          {/* Header Row for Item */}
+                                          <tr className={`border-t-4 border-gray-50 ${rowClass}`}>
+                                              <td className="p-3 text-center">
+                                                  <button onClick={() => handleRemoveItem(idx)} className="text-red-400 hover:text-red-600"><Trash className="w-4 h-4" /></button>
+                                              </td>
+                                              <td className="p-3 font-bold text-gray-800">
+                                                  {item.reference} <br/> 
+                                                  <span className="text-xs uppercase font-normal text-gray-500">{item.color}</span>
+                                              </td>
+                                              <td colSpan={4} className="p-0">
+                                                  {/* Sub-table for Sizes */}
+                                                  <table className="w-full">
+                                                      <tbody>
+                                                          {allRowSizes.map(size => {
+                                                              const orderedQty = item.sizes[size] || 0;
+                                                              const pickedQty = item.picked?.[size] !== undefined ? item.picked[size] : '';
+                                                              const stockQty = prod?.stock?.[size] || 0;
+                                                              
+                                                              // Determine style for picked input
+                                                              let inputBg = "bg-white";
+                                                              if (typeof pickedQty === 'number') {
+                                                                  if (pickedQty === orderedQty) inputBg = "bg-green-100 text-green-800 font-bold";
+                                                                  else if (pickedQty > orderedQty) inputBg = "bg-red-100 text-red-800 font-bold";
+                                                                  else inputBg = "bg-yellow-50";
+                                                              }
+
+                                                              return (
+                                                                  <tr key={size} className="border-b border-gray-50 last:border-0">
+                                                                      <td className="p-2 pl-4 text-xs font-bold w-1/4">{size}</td>
+                                                                      
+                                                                      {/* QTD PEDIDA (Editable Only in Edit Mode) */}
+                                                                      <td className="p-2 text-center bg-blue-50 w-24">
+                                                                          {isEditing ? (
+                                                                              <input 
+                                                                                  type="number"
+                                                                                  className="w-16 p-1 border rounded text-center text-blue-800 font-bold"
+                                                                                  value={orderedQty || ''}
+                                                                                  onChange={(e) => handleOrderQtyChange(idx, size, e.target.value)}
+                                                                              />
+                                                                          ) : (
+                                                                              <span className="text-blue-800 font-bold">{orderedQty}</span>
+                                                                          )}
+                                                                      </td>
+
+                                                                      {/* QTD SEPARADA (Always Editable unless finalizing) */}
+                                                                      <td className="p-2 text-center bg-green-50 w-24">
+                                                                           <input 
+                                                                              type="number"
+                                                                              min="0"
+                                                                              className={`w-16 p-1 border rounded text-center outline-none focus:ring-2 focus:ring-green-500 ${inputBg}`}
+                                                                              value={pickedQty}
+                                                                              onChange={(e) => handlePickingChange(idx, size, e.target.value)}
+                                                                              onKeyDown={(e) => {
+                                                                                  if (e.key === 'Enter') {
+                                                                                      // Auto-fill logic could go here
+                                                                                  }
+                                                                              }}
+                                                                          />
+                                                                      </td>
+
+                                                                      {/* STOCK INFO */}
+                                                                      <td className="p-2 text-center w-24 text-xs text-gray-400">
+                                                                          Est: {stockQty}
+                                                                      </td>
+                                                                  </tr>
+                                                              );
+                                                          })}
+                                                          {/* Total Row for Item */}
+                                                          <tr className="bg-gray-100 text-xs font-bold">
+                                                              <td className="p-2 text-right">TOTAIS ITEM:</td>
+                                                              <td className="p-2 text-center text-blue-700">{totalOrdered}</td>
+                                                              <td className="p-2 text-center text-green-700">{totalPicked}</td>
+                                                              <td>
+                                                                  {!isEditing ? (
+                                                                      <button onClick={() => setEditingItemIdx(idx)} className="ml-2 text-blue-500 hover:text-blue-700 underline text-[10px]">
+                                                                          Editar Pedido
+                                                                      </button>
+                                                                  ) : (
+                                                                      <button onClick={() => setEditingItemIdx(null)} className="ml-2 text-green-600 hover:text-green-800 flex items-center justify-center w-full">
+                                                                          <Check className="w-4 h-4" />
+                                                                      </button>
+                                                                  )}
+                                                              </td>
+                                                          </tr>
+                                                      </tbody>
+                                                  </table>
+                                              </td>
+                                          </tr>
+                                      </React.Fragment>
+                                  );
+                              })}
+                          </tbody>
+                      </table>
+                  </div>
+             </div>
+
+             {/* Footer Actions */}
+             <div className="p-4 border-t bg-white rounded-b-lg shadow-up">
+                 {!showRomaneioOptions ? (
+                     <div className="flex justify-between items-center">
+                         <div className="text-sm text-gray-500">
+                             <p>Confira os itens bipados/separados na coluna verde.</p>
+                             <p>Use "Adicionar Item" se houver extras.</p>
+                         </div>
+                         <div className="flex gap-3">
+                             <button 
+                                 onClick={savePickingSimple}
+                                 disabled={savingPicking}
+                                 className="px-6 py-3 bg-gray-200 text-gray-800 rounded font-bold hover:bg-gray-300 transition"
+                             >
+                                 {savingPicking ? <Loader2 className="animate-spin" /> : 'Salvar Progresso'}
+                             </button>
+                             <button 
+                                 onClick={() => setShowRomaneioOptions(true)}
+                                 className="px-6 py-3 bg-orange-600 text-white rounded font-bold hover:bg-orange-700 transition shadow-lg flex items-center"
+                             >
+                                 <Truck className="w-5 h-5 mr-2" />
+                                 Baixar / Finalizar
+                             </button>
+                         </div>
+                     </div>
+                 ) : (
+                     <div className="bg-orange-50 p-4 rounded-lg border border-orange-200 animate-fade-in">
+                         <h4 className="font-bold text-orange-900 mb-3 text-lg">Finalização de Pedido</h4>
+                         
+                         <div className="flex flex-col md:flex-row gap-4 items-end mb-4">
+                              <div className="flex-1 w-full">
+                                  <label className="block text-sm font-bold text-gray-700 mb-1">Informe o Número do Romaneio</label>
+                                  <input 
+                                      type="text" 
+                                      autoFocus
+                                      className="w-full border p-3 rounded text-lg font-bold border-orange-300 focus:ring-2 focus:ring-orange-500 outline-none"
+                                      placeholder="Ex: 12345"
+                                      value={inputRomaneio}
+                                      onChange={(e) => setInputRomaneio(e.target.value)}
+                                  />
+                              </div>
+                         </div>
+
+                         <div className="flex flex-col md:flex-row gap-3 pt-2 border-t border-orange-200">
+                             <button 
+                                 onClick={() => setShowRomaneioOptions(false)}
+                                 className="px-4 py-3 text-gray-600 hover:text-gray-800 font-medium"
+                             >
+                                 Voltar
+                             </button>
+
+                             <div className="flex-1"></div>
+
+                             <button 
+                                 onClick={handlePartialDelivery}
+                                 disabled={savingPicking || !inputRomaneio}
+                                 className="px-6 py-3 bg-purple-600 text-white rounded font-bold hover:bg-purple-700 transition shadow flex items-center justify-center disabled:opacity-50"
+                                 title="Gera romaneio do que foi separado e cria novo pedido com o saldo restante"
+                             >
+                                 <Split className="w-5 h-5 mr-2" />
+                                 Entrega Parcial (Gerar Saldo)
+                             </button>
+
+                             <button 
+                                 onClick={() => handleFinalizeWithCancel()} // Changed to the generic handler
+                                 disabled={savingPicking || !inputRomaneio}
+                                 className="px-6 py-3 bg-green-600 text-white rounded font-bold hover:bg-green-700 transition shadow flex items-center justify-center disabled:opacity-50"
+                                 title="Finaliza o pedido considerando o que foi separado. Se houver diferença, ela será cancelada."
+                             >
+                                 <CheckCircle className="w-5 h-5 mr-2" />
+                                 Finalizar Completo
+                             </button>
+                         </div>
+                     </div>
+                 )}
+             </div>
           </div>
         </div>
       )}
