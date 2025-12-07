@@ -92,7 +92,7 @@ const Login: React.FC<Props> = ({ onLogin }) => {
         </form>
         
         <div className="mt-6 text-center text-xs text-gray-400">
-          &copy; 2025 Gestão Confecção. Todos os direitos reservados.
+          &copy; 2026 Gestão Confecção. Todos os direitos reservados.
         </div>
       </div>
     </div>
