@@ -8,18 +8,25 @@ const app = express();
 const port = 3000;
 
 // --- CONFIGURAÇÃO DO BANCO DE DADOS ---
-// EDITE AQUI SE SEU USUÁRIO/SENHA FOREM DIFERENTES
+// O sistema tentará ler das variáveis de ambiente do computador.
+// Se não encontrar, usará os valores padrão à direita (ex: 'admin').
+// VOCÊ PODE ALTERAR OS VALORES PADRÃO DIRETAMENTE AQUI SE PREFERIR.
 const dbConfig = {
-  user: 'postgres',       // Seu usuário do PostgreSQL (ex: postgres, admin)
-  host: 'localhost',
-  database: 'confeccao_db',
-  password: '123',      // A senha que você definiu ao instalar ou criar o usuário
-  port: 5432,
+  user: process.env.DB_USER || 'postgres',         // Usuário do banco
+  host: process.env.DB_HOST || 'localhost',        // Endereço (localhost = seu pc)
+  database: process.env.DB_NAME || 'confeccao_db', // Nome do banco
+  password: process.env.DB_PASSWORD || 'admin',    // <--- SUA SENHA AQUI SE NÃO USAR ENV
+  port: process.env.DB_PORT || 5432,
 };
 
 const pool = new Pool(dbConfig);
 
 // Teste de conexão imediato ao iniciar
+console.log('Tentando conectar ao PostgreSQL com:', { 
+    ...dbConfig, 
+    password: dbConfig.password ? '****' : 'SEM SENHA' 
+});
+
 pool.connect((err, client, release) => {
   if (err) {
     console.error('\n\x1b[31m---------------------------------------------------------');
@@ -28,7 +35,7 @@ pool.connect((err, client, release) => {
     console.error('Código do Erro:', err.code);
     if (err.code === '28P01') {
       console.error('MOTIVO: Senha incorreta ou usuário inexistente.');
-      console.error(`Verifique se o usuário "${dbConfig.user}" e a senha "${dbConfig.password}" estão corretos.`);
+      console.error(`Tente editar a linha "password" no arquivo server.js para a senha correta.`);
     } else if (err.code === '3D000') {
       console.error(`MOTIVO: O banco de dados "${dbConfig.database}" não existe.`);
       console.error('SOLUÇÃO: Abra o pgAdmin e execute: CREATE DATABASE confeccao_db;');
@@ -56,7 +63,12 @@ app.get('/api/users', async (req, res) => {
     res.json(rows);
   } catch (err) { 
     console.error(err);
-    res.status(500).json({error: "Erro ao buscar usuários", details: err.message}); 
+    // Se tabela não existe, erro 42P01
+    if (err.code === '42P01') {
+        res.status(500).json({error: "Tabelas não encontradas. Rode o arquivo setup_database.sql no pgAdmin."});
+    } else {
+        res.status(500).json({error: "Erro ao buscar usuários", details: err.message}); 
+    }
   }
 });
 
@@ -84,9 +96,8 @@ app.get('/api/products', async (req, res) => {
     const { rows } = await pool.query('SELECT * FROM products');
     res.json(rows);
   } catch (err) { 
-    // Se a tabela não existir, retorna array vazio para não quebrar o front
     if (err.code === '42P01') { 
-        console.warn("Tabela 'products' não encontrada. Rodou o schema.sql?");
+        console.warn("Tabela 'products' não encontrada.");
         return res.json([]); 
     }
     res.status(500).json(err); 
@@ -164,7 +175,6 @@ app.delete('/api/clients/:id', async (req, res) => {
     await pool.query('DELETE FROM clients WHERE id = $1', [req.params.id]);
     res.status(200).send();
   } catch (err) { 
-      // Tratamento para FK constraint
       if (err.code === '23503') {
           res.status(400).json({ message: 'foreign key constraint' });
       } else {
@@ -214,7 +224,6 @@ app.put('/api/orders/:id', async (req, res) => {
   const { romaneio, status, is_partial, items, total_pieces, subtotal_value, final_total_value } = req.body;
   
   try {
-    // Atualização dinâmica baseada no que foi enviado
     let fields = [];
     let values = [];
     let idx = 1;
@@ -248,7 +257,6 @@ app.get('/api/rep_prices', async (req, res) => {
 app.post('/api/rep_prices', async (req, res) => {
   const { rep_id, reference, price } = req.body;
   try {
-    // Upsert logic simulada
     const check = await pool.query('SELECT id FROM rep_prices WHERE rep_id=$1 AND reference=$2', [rep_id, reference]);
     if (check.rows.length > 0) {
        await pool.query('UPDATE rep_prices SET price=$1 WHERE id=$2', [price, check.rows[0].id]);
