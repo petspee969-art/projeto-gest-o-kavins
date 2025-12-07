@@ -1,91 +1,170 @@
 
 const express = require('express');
-const { Pool } = require('pg');
+const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const path = require('path');
 
 const app = express();
 const port = 3000;
 
-// --- CONFIGURAÇÃO DO BANCO DE DADOS ---
-// O sistema tentará ler das variáveis de ambiente do computador.
-// Se não encontrar, usará os valores padrão à direita (ex: 'admin').
-// VOCÊ PODE ALTERAR OS VALORES PADRÃO DIRETAMENTE AQUI SE PREFERIR.
-const dbConfig = {
-  user: process.env.DB_USER || 'postgres',         // Usuário do banco
-  host: process.env.DB_HOST || 'localhost',        // Endereço (localhost = seu pc)
-  database: process.env.DB_NAME || 'confeccao_db', // Nome do banco
-  password: process.env.DB_PASSWORD || 'admin',    // <--- SUA SENHA AQUI SE NÃO USAR ENV
-  port: process.env.DB_PORT || 5432,
-};
+// Caminho do arquivo do banco de dados
+const dbPath = path.resolve(__dirname, 'confeccao.db');
 
-const pool = new Pool(dbConfig);
-
-// Teste de conexão imediato ao iniciar
-console.log('Tentando conectar ao PostgreSQL com:', { 
-    ...dbConfig, 
-    password: dbConfig.password ? '****' : 'SEM SENHA' 
-});
-
-pool.connect((err, client, release) => {
+// --- CONEXÃO COM SQLITE ---
+const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
-    console.error('\n\x1b[31m---------------------------------------------------------');
-    console.error('ERRO CRÍTICO AO CONECTAR NO POSTGRESQL:');
-    console.error('---------------------------------------------------------');
-    console.error('Código do Erro:', err.code);
-    if (err.code === '28P01') {
-      console.error('MOTIVO: Senha incorreta ou usuário inexistente.');
-      console.error(`Tente editar a linha "password" no arquivo server.js para a senha correta.`);
-    } else if (err.code === '3D000') {
-      console.error(`MOTIVO: O banco de dados "${dbConfig.database}" não existe.`);
-      console.error('SOLUÇÃO: Abra o pgAdmin e execute: CREATE DATABASE confeccao_db;');
-    } else if (err.code === 'ECONNREFUSED') {
-      console.error('MOTIVO: O PostgreSQL não está rodando ou a porta está errada.');
-    } else {
-        console.error('Detalhes:', err.message);
-    }
-    console.error('---------------------------------------------------------\x1b[0m\n');
+    console.error('Erro ao conectar ao SQLite:', err.message);
   } else {
-    console.log('\n\x1b[32m---------------------------------------------------------');
-    console.log('✅ SUCESSO: Conectado ao PostgreSQL corretamente!');
-    console.log('---------------------------------------------------------\x1b[0m\n');
-    release();
+    console.log(`✅ Conectado ao banco de dados SQLite em: ${dbPath}`);
+    initializeTables();
   }
 });
+
+// --- HELPER FUNCTIONS (Promises para SQLite) ---
+// O sqlite3 usa callbacks, então criamos wrappers para usar async/await
+const dbRun = (sql, params = []) => {
+    return new Promise((resolve, reject) => {
+        db.run(sql, params, function (err) {
+            if (err) reject(err);
+            else resolve({ id: this.lastID, changes: this.changes });
+        });
+    });
+};
+
+const dbGet = (sql, params = []) => {
+    return new Promise((resolve, reject) => {
+        db.get(sql, params, (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+        });
+    });
+};
+
+const dbAll = (sql, params = []) => {
+    return new Promise((resolve, reject) => {
+        db.all(sql, params, (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows);
+        });
+    });
+};
+
+// --- INICIALIZAÇÃO DAS TABELAS ---
+async function initializeTables() {
+    try {
+        // Habilita chaves estrangeiras
+        await dbRun("PRAGMA foreign_keys = ON");
+
+        // Users
+        await dbRun(`CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            role TEXT NOT NULL
+        )`);
+
+        // Products (stock guardado como JSON string)
+        await dbRun(`CREATE TABLE IF NOT EXISTS products (
+            id TEXT PRIMARY KEY,
+            reference TEXT NOT NULL,
+            color TEXT NOT NULL,
+            grid_type TEXT NOT NULL,
+            stock TEXT, 
+            enforce_stock INTEGER DEFAULT 0,
+            base_price REAL DEFAULT 0
+        )`);
+
+        // Clients
+        await dbRun(`CREATE TABLE IF NOT EXISTS clients (
+            id TEXT PRIMARY KEY,
+            rep_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            city TEXT,
+            neighborhood TEXT,
+            state TEXT,
+            FOREIGN KEY(rep_id) REFERENCES users(id)
+        )`);
+
+        // Orders
+        await dbRun(`CREATE TABLE IF NOT EXISTS orders (
+            id TEXT PRIMARY KEY,
+            display_id INTEGER,
+            romaneio TEXT,
+            is_partial INTEGER DEFAULT 0,
+            rep_id TEXT,
+            rep_name TEXT,
+            client_id TEXT,
+            client_name TEXT,
+            client_city TEXT,
+            client_state TEXT,
+            created_at TEXT,
+            delivery_date TEXT,
+            payment_method TEXT,
+            status TEXT,
+            items TEXT,
+            total_pieces INTEGER,
+            subtotal_value REAL,
+            discount_type TEXT,
+            discount_value REAL,
+            final_total_value REAL
+        )`);
+
+        // Rep Prices
+        await dbRun(`CREATE TABLE IF NOT EXISTS rep_prices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            rep_id TEXT NOT NULL,
+            reference TEXT NOT NULL,
+            price REAL NOT NULL
+        )`);
+
+        // Config
+        await dbRun(`CREATE TABLE IF NOT EXISTS app_config (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )`);
+
+        // Verifica se existe admin, se não, cria
+        const admin = await dbGet("SELECT * FROM users WHERE username = ?", ['admin']);
+        if (!admin) {
+            await dbRun("INSERT INTO users (id, name, username, password, role) VALUES (?, ?, ?, ?, ?)", 
+                ['admin-id-default', 'Administrador', 'admin', 'admin', 'admin']);
+            console.log("👤 Usuário padrão criado: admin / admin");
+        }
+
+        console.log("📦 Tabelas verificadas/criadas com sucesso.");
+
+    } catch (err) {
+        console.error("Erro ao inicializar tabelas:", err);
+    }
+}
 
 app.use(cors());
 app.use(bodyParser.json());
 
+// --- ROUTES (Adaptadas para sintaxe SQLite: ? ao invés de $1) ---
+
 // --- USERS ---
 app.get('/api/users', async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM users');
+    const rows = await dbAll('SELECT * FROM users');
     res.json(rows);
-  } catch (err) { 
-    console.error(err);
-    // Se tabela não existe, erro 42P01
-    if (err.code === '42P01') {
-        res.status(500).json({error: "Tabelas não encontradas. Rode o arquivo setup_database.sql no pgAdmin."});
-    } else {
-        res.status(500).json({error: "Erro ao buscar usuários", details: err.message}); 
-    }
-  }
+  } catch (err) { res.status(500).json({error: err.message}); }
 });
 
 app.post('/api/users', async (req, res) => {
   const { id, name, username, password, role } = req.body;
   try {
-    await pool.query('INSERT INTO users (id, name, username, password, role) VALUES ($1, $2, $3, $4, $5)', [id, name, username, password, role]);
+    await dbRun('INSERT INTO users (id, name, username, password, role) VALUES (?, ?, ?, ?, ?)', 
+        [id, name, username, password, role]);
     res.status(201).send();
-  } catch (err) { 
-    console.error(err);
-    res.status(500).json({error: "Erro ao criar usuário", details: err.message}); 
-  }
+  } catch (err) { res.status(500).json({error: err.message}); }
 });
 
 app.delete('/api/users/:id', async (req, res) => {
   try {
-    await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+    await dbRun('DELETE FROM users WHERE id = ?', [req.params.id]);
     res.status(200).send();
   } catch (err) { res.status(500).json(err); }
 });
@@ -93,23 +172,23 @@ app.delete('/api/users/:id', async (req, res) => {
 // --- PRODUCTS ---
 app.get('/api/products', async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM products');
-    res.json(rows);
-  } catch (err) { 
-    if (err.code === '42P01') { 
-        console.warn("Tabela 'products' não encontrada.");
-        return res.json([]); 
-    }
-    res.status(500).json(err); 
-  }
+    const rows = await dbAll('SELECT * FROM products');
+    // Parse JSON strings back to objects for frontend compatibility
+    const products = rows.map(p => ({
+        ...p,
+        stock: p.stock ? JSON.parse(p.stock) : {},
+        enforce_stock: !!p.enforce_stock // Converte 0/1 para boolean
+    }));
+    res.json(products);
+  } catch (err) { res.status(500).json(err); }
 });
 
 app.post('/api/products', async (req, res) => {
   const { id, reference, color, grid_type, stock, enforce_stock, base_price } = req.body;
   try {
-    await pool.query(
-      'INSERT INTO products (id, reference, color, grid_type, stock, enforce_stock, base_price) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [id, reference, color, grid_type, stock, enforce_stock, base_price]
+    await dbRun(
+      'INSERT INTO products (id, reference, color, grid_type, stock, enforce_stock, base_price) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, reference, color, grid_type, JSON.stringify(stock), enforce_stock ? 1 : 0, base_price]
     );
     res.status(201).send();
   } catch (err) { console.error(err); res.status(500).json(err); }
@@ -118,9 +197,9 @@ app.post('/api/products', async (req, res) => {
 app.put('/api/products/:id', async (req, res) => {
   const { stock, enforce_stock, base_price } = req.body;
   try {
-    await pool.query(
-      'UPDATE products SET stock = $1, enforce_stock = $2, base_price = $3 WHERE id = $4',
-      [stock, enforce_stock, base_price, req.params.id]
+    await dbRun(
+      'UPDATE products SET stock = ?, enforce_stock = ?, base_price = ? WHERE id = ?',
+      [JSON.stringify(stock), enforce_stock ? 1 : 0, base_price, req.params.id]
     );
     res.status(200).send();
   } catch (err) { res.status(500).json(err); }
@@ -128,7 +207,7 @@ app.put('/api/products/:id', async (req, res) => {
 
 app.delete('/api/products/:id', async (req, res) => {
   try {
-    await pool.query('DELETE FROM products WHERE id = $1', [req.params.id]);
+    await dbRun('DELETE FROM products WHERE id = ?', [req.params.id]);
     res.status(200).send();
   } catch (err) { res.status(500).json(err); }
 });
@@ -140,10 +219,10 @@ app.get('/api/clients', async (req, res) => {
     let query = 'SELECT * FROM clients';
     let params = [];
     if (rep_id) {
-      query += ' WHERE rep_id = $1';
+      query += ' WHERE rep_id = ?';
       params.push(rep_id);
     }
-    const { rows } = await pool.query(query, params);
+    const rows = await dbAll(query, params);
     res.json(rows);
   } catch (err) { res.status(500).json(err); }
 });
@@ -151,8 +230,8 @@ app.get('/api/clients', async (req, res) => {
 app.post('/api/clients', async (req, res) => {
   const { id, rep_id, name, city, neighborhood, state } = req.body;
   try {
-    await pool.query(
-      'INSERT INTO clients (id, rep_id, name, city, neighborhood, state) VALUES ($1, $2, $3, $4, $5, $6)',
+    await dbRun(
+      'INSERT INTO clients (id, rep_id, name, city, neighborhood, state) VALUES (?, ?, ?, ?, ?, ?)',
       [id, rep_id, name, city, neighborhood, state]
     );
     res.status(201).send();
@@ -162,8 +241,8 @@ app.post('/api/clients', async (req, res) => {
 app.put('/api/clients/:id', async (req, res) => {
   const { rep_id, name, city, neighborhood, state } = req.body;
   try {
-    await pool.query(
-      'UPDATE clients SET rep_id=$1, name=$2, city=$3, neighborhood=$4, state=$5 WHERE id=$6',
+    await dbRun(
+      'UPDATE clients SET rep_id=?, name=?, city=?, neighborhood=?, state=? WHERE id=?',
       [rep_id, name, city, neighborhood, state, req.params.id]
     );
     res.status(200).send();
@@ -172,14 +251,14 @@ app.put('/api/clients/:id', async (req, res) => {
 
 app.delete('/api/clients/:id', async (req, res) => {
   try {
-    await pool.query('DELETE FROM clients WHERE id = $1', [req.params.id]);
+    await dbRun('DELETE FROM clients WHERE id = ?', [req.params.id]);
     res.status(200).send();
   } catch (err) { 
-      if (err.code === '23503') {
-          res.status(400).json({ message: 'foreign key constraint' });
-      } else {
-          res.status(500).json(err); 
-      }
+    if (err.message && err.message.includes('FOREIGN KEY constraint failed')) {
+        res.status(400).json({ message: 'foreign key constraint' });
+    } else {
+        res.status(500).json(err); 
+    }
   }
 });
 
@@ -187,34 +266,39 @@ app.delete('/api/clients/:id', async (req, res) => {
 app.get('/api/orders', async (req, res) => {
   const { id, romaneio, excludeId } = req.query;
   try {
+      let rows;
       if (romaneio) {
-          let query = 'SELECT * FROM orders WHERE romaneio = $1';
+          let query = 'SELECT * FROM orders WHERE romaneio = ?';
           let params = [romaneio];
           if (excludeId) {
-              query += ' AND id != $2';
+              query += ' AND id != ?';
               params.push(excludeId);
           }
-          const { rows } = await pool.query(query, params);
-          return res.json(rows);
-      }
-      
-      if (id) {
-          const { rows } = await pool.query('SELECT * FROM orders WHERE id = $1', [id]);
-          return res.json(rows);
+          rows = await dbAll(query, params);
+      } else if (id) {
+          rows = await dbAll('SELECT * FROM orders WHERE id = ?', [id]);
+      } else {
+          rows = await dbAll('SELECT * FROM orders');
       }
 
-      const { rows } = await pool.query('SELECT * FROM orders');
-      res.json(rows);
+      // SQLite converte boolean pra 0/1 e JSON pra string, precisa converter de volta
+      const parsedRows = rows.map(r => ({
+          ...r,
+          is_partial: !!r.is_partial,
+          items: r.items ? JSON.parse(r.items) : []
+      }));
+      
+      res.json(parsedRows);
   } catch (err) { res.status(500).json(err); }
 });
 
 app.post('/api/orders', async (req, res) => {
   const order = req.body;
   try {
-    await pool.query(
+    await dbRun(
       `INSERT INTO orders (id, display_id, romaneio, is_partial, rep_id, rep_name, client_id, client_name, client_city, client_state, created_at, delivery_date, payment_method, status, items, total_pieces, subtotal_value, discount_type, discount_value, final_total_value) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
-      [order.id, order.display_id, order.romaneio, order.is_partial, order.rep_id, order.rep_name, order.client_id, order.client_name, order.client_city, order.client_state, order.created_at, order.delivery_date, order.payment_method, order.status, JSON.stringify(order.items), order.total_pieces, order.subtotal_value, order.discount_type, order.discount_value, order.final_total_value]
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [order.id, order.display_id, order.romaneio, order.is_partial ? 1 : 0, order.rep_id, order.rep_name, order.client_id, order.client_name, order.client_city, order.client_state, order.created_at, order.delivery_date, order.payment_method, order.status, JSON.stringify(order.items), order.total_pieces, order.subtotal_value, order.discount_type, order.discount_value, order.final_total_value]
     );
     res.status(201).send();
   } catch (err) { console.error(err); res.status(500).json(err); }
@@ -226,22 +310,32 @@ app.put('/api/orders/:id', async (req, res) => {
   try {
     let fields = [];
     let values = [];
-    let idx = 1;
 
-    if (romaneio !== undefined) { fields.push(`romaneio=$${idx++}`); values.push(romaneio); }
-    if (status !== undefined) { fields.push(`status=$${idx++}`); values.push(status); }
-    if (is_partial !== undefined) { fields.push(`is_partial=$${idx++}`); values.push(is_partial); }
-    if (items !== undefined) { fields.push(`items=$${idx++}`); values.push(JSON.stringify(items)); }
-    if (total_pieces !== undefined) { fields.push(`total_pieces=$${idx++}`); values.push(total_pieces); }
-    if (subtotal_value !== undefined) { fields.push(`subtotal_value=$${idx++}`); values.push(subtotal_value); }
-    if (final_total_value !== undefined) { fields.push(`final_total_value=$${idx++}`); values.push(final_total_value); }
+    if (romaneio !== undefined) { fields.push(`romaneio=?`); values.push(romaneio); }
+    if (status !== undefined) { fields.push(`status=?`); values.push(status); }
+    if (is_partial !== undefined) { fields.push(`is_partial=?`); values.push(is_partial ? 1 : 0); }
+    if (items !== undefined) { fields.push(`items=?`); values.push(JSON.stringify(items)); }
+    if (total_pieces !== undefined) { fields.push(`total_pieces=?`); values.push(total_pieces); }
+    if (subtotal_value !== undefined) { fields.push(`subtotal_value=?`); values.push(subtotal_value); }
+    if (final_total_value !== undefined) { fields.push(`final_total_value=?`); values.push(final_total_value); }
 
     values.push(req.params.id);
 
-    const query = `UPDATE orders SET ${fields.join(', ')} WHERE id=$${idx}`;
-    const { rows } = await pool.query(query + ' RETURNING *', values);
+    const query = `UPDATE orders SET ${fields.join(', ')} WHERE id=?`;
     
-    res.json(rows[0]);
+    // SQLite não suporta RETURNING * facilmente em todas as versões no UPDATE
+    // Então fazemos o UPDATE e depois o SELECT
+    await dbRun(query, values);
+    const updatedRow = await dbGet("SELECT * FROM orders WHERE id = ?", [req.params.id]);
+    
+    if (updatedRow) {
+        updatedRow.is_partial = !!updatedRow.is_partial;
+        updatedRow.items = updatedRow.items ? JSON.parse(updatedRow.items) : [];
+        res.json(updatedRow);
+    } else {
+        res.status(404).json({error: "Order not found"});
+    }
+
   } catch (err) { console.error(err); res.status(500).json(err); }
 });
 
@@ -249,7 +343,7 @@ app.put('/api/orders/:id', async (req, res) => {
 app.get('/api/rep_prices', async (req, res) => {
   const { rep_id } = req.query;
   try {
-    const { rows } = await pool.query('SELECT * FROM rep_prices WHERE rep_id = $1', [rep_id]);
+    const rows = await dbAll('SELECT * FROM rep_prices WHERE rep_id = ?', [rep_id]);
     res.json(rows);
   } catch (err) { res.status(500).json(err); }
 });
@@ -257,11 +351,11 @@ app.get('/api/rep_prices', async (req, res) => {
 app.post('/api/rep_prices', async (req, res) => {
   const { rep_id, reference, price } = req.body;
   try {
-    const check = await pool.query('SELECT id FROM rep_prices WHERE rep_id=$1 AND reference=$2', [rep_id, reference]);
-    if (check.rows.length > 0) {
-       await pool.query('UPDATE rep_prices SET price=$1 WHERE id=$2', [price, check.rows[0].id]);
+    const check = await dbGet('SELECT id FROM rep_prices WHERE rep_id=? AND reference=?', [rep_id, reference]);
+    if (check) {
+       await dbRun('UPDATE rep_prices SET price=? WHERE id=?', [price, check.id]);
     } else {
-       await pool.query('INSERT INTO rep_prices (rep_id, reference, price) VALUES ($1, $2, $3)', [rep_id, reference, price]);
+       await dbRun('INSERT INTO rep_prices (rep_id, reference, price) VALUES (?, ?, ?)', [rep_id, reference, price]);
     }
     res.status(200).send();
   } catch (err) { res.status(500).json(err); }
@@ -270,19 +364,25 @@ app.post('/api/rep_prices', async (req, res) => {
 // --- CONFIG ---
 app.get('/api/config/:key', async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT value FROM app_config WHERE key = $1', [req.params.key]);
-    res.json(rows[0] || null);
+    const row = await dbGet('SELECT value FROM app_config WHERE key = ?', [req.params.key]);
+    // SQLite retorna value como string, se for número, o frontend converte, mas vamos facilitar
+    if (row && !isNaN(row.value)) {
+        row.value = Number(row.value);
+    }
+    res.json(row || null);
   } catch (err) { res.status(500).json(err); }
 });
 
 app.post('/api/config', async (req, res) => {
   const { key, value } = req.body;
   try {
-    await pool.query('INSERT INTO app_config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', [key, value]);
+    // Upsert no SQLite
+    await dbRun(`INSERT INTO app_config (key, value) VALUES (?, ?) 
+                 ON CONFLICT(key) DO UPDATE SET value=excluded.value`, [key, value]);
     res.status(200).send();
   } catch (err) { res.status(500).json(err); }
 });
 
 app.listen(port, () => {
-  console.log(`API Local rodando na porta ${port}`);
+  console.log(`API SQLite rodando na porta ${port}`);
 });

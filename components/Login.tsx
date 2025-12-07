@@ -1,7 +1,8 @@
+
 import React, { useState } from 'react';
 import { User } from '../types';
 import { getUsers } from '../services/storageService';
-import { Lock, User as UserIcon, Loader2 } from 'lucide-react';
+import { Lock, User as UserIcon, Loader2, AlertTriangle } from 'lucide-react';
 
 interface Props {
   onLogin: (user: User) => void;
@@ -20,16 +21,25 @@ const Login: React.FC<Props> = ({ onLogin }) => {
 
     try {
       const users = await getUsers();
+      
+      // Se users for vazio, significa que o banco conectou mas não tem usuários (apenas o admin padrão deve existir)
+      if (users.length === 0) {
+         setError('Conexão bem sucedida, mas nenhum usuário encontrado. Verifique se rodou o script SQL.');
+         setLoading(false);
+         return;
+      }
+
       const validUser = users.find(u => u.username === username && u.password === password);
       
       if (validUser) {
         onLogin(validUser);
       } else {
-        setError('Credenciais inválidas. Tente novamente.');
+        setError('Usuário ou senha incorretos.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError('Erro ao conectar com o servidor.');
+      // Mostra a mensagem exata vinda do service (que distingue server off de erro de DB)
+      setError(err.message || 'Erro desconhecido ao tentar login.');
     } finally {
       setLoading(false);
     }
@@ -45,8 +55,9 @@ const Login: React.FC<Props> = ({ onLogin }) => {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {error && (
-            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center">
-              {error}
+            <div className="bg-red-50 text-red-700 p-4 rounded-lg text-sm flex items-start">
+              <AlertTriangle className="w-5 h-5 mr-2 flex-shrink-0" />
+              <div className="whitespace-pre-wrap">{error}</div>
             </div>
           )}
 
@@ -60,7 +71,7 @@ const Login: React.FC<Props> = ({ onLogin }) => {
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Digite seu usuário"
+                placeholder="admin"
                 disabled={loading}
               />
             </div>
@@ -76,7 +87,7 @@ const Login: React.FC<Props> = ({ onLogin }) => {
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="123"
                 disabled={loading}
               />
             </div>
@@ -92,7 +103,8 @@ const Login: React.FC<Props> = ({ onLogin }) => {
         </form>
         
         <div className="mt-6 text-center text-xs text-gray-400">
-          &copy; 2026 Gestão Confecção. Todos os direitos reservados.
+          <p>Dica: Certifique-se que o "node server.js" está rodando.</p>
+          &copy; 2025 Gestão Confecção.
         </div>
       </div>
     </div>

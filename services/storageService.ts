@@ -17,32 +17,46 @@ export const generateUUID = () => {
   });
 };
 
+// --- HELPER DE FETCH ---
+const safeFetch = async (url: string, options?: RequestInit) => {
+    try {
+        const res = await fetch(url, options);
+        if (!res.ok) {
+            const errorBody = await res.json().catch(() => null);
+            const msg = errorBody?.details || errorBody?.error || `Erro na API: ${res.status} ${res.statusText}`;
+            throw new Error(msg);
+        }
+        return res;
+    } catch (error: any) {
+        if (error.name === 'TypeError' || error.message.includes('Failed to fetch')) {
+            throw new Error("O Servidor (API) parece estar DESLIGADO.\n\nAbra um novo terminal e rode: 'node server.js'");
+        }
+        throw error;
+    }
+};
+
 // --- USERS ---
 export const getUsers = async (): Promise<User[]> => {
-  const res = await fetch(`${API_URL}/users`);
-  if (!res.ok) throw new Error("Erro ao buscar usuários");
+  const res = await safeFetch(`${API_URL}/users`);
   return res.json();
 };
 
 export const addUser = async (user: User): Promise<void> => {
-  const res = await fetch(`${API_URL}/users`, {
+  await safeFetch(`${API_URL}/users`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(user)
   });
-  if (!res.ok) throw new Error("Erro ao criar usuário");
 };
 
 export const deleteUser = async (id: string): Promise<void> => {
-  const res = await fetch(`${API_URL}/users/${id}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error("Erro ao deletar usuário");
+  await safeFetch(`${API_URL}/users/${id}`, { method: 'DELETE' });
 };
 
 // --- PRODUCTS ---
 export const getProducts = async (): Promise<ProductDef[]> => {
   try {
-      const res = await fetch(`${API_URL}/products`);
-      if (!res.ok) return [];
+      const res = await safeFetch(`${API_URL}/products`);
       const data = await res.json();
       
       return data.map((p: any) => ({
@@ -56,7 +70,7 @@ export const getProducts = async (): Promise<ProductDef[]> => {
       })) as ProductDef[];
   } catch (e) {
       console.error(e);
-      return [];
+      throw e;
   }
 };
 
@@ -71,26 +85,23 @@ export const addProduct = async (prod: ProductDef): Promise<void> => {
     base_price: prod.basePrice
   };
 
-  const res = await fetch(`${API_URL}/products`, {
+  await safeFetch(`${API_URL}/products`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(dbProd)
   });
-  if (!res.ok) throw new Error("Erro ao criar produto");
 };
 
 export const updateProductInventory = async (id: string, newStock: any, enforceStock: boolean, basePrice: number): Promise<void> => {
-    const res = await fetch(`${API_URL}/products/${id}`, {
+    await safeFetch(`${API_URL}/products/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stock: newStock, enforce_stock: enforceStock, base_price: basePrice })
     });
-    if (!res.ok) throw new Error("Erro ao atualizar produto");
 }
 
 export const deleteProduct = async (id: string): Promise<void> => {
-  const res = await fetch(`${API_URL}/products/${id}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error("Erro ao deletar produto");
+  await safeFetch(`${API_URL}/products/${id}`, { method: 'DELETE' });
 };
 
 // --- LOGICA DE ESTOQUE ---
@@ -118,7 +129,7 @@ export const updateStockOnOrderCreation = async (items: OrderItem[]): Promise<vo
 export const saveOrderPicking = async (orderId: string, oldItems: OrderItem[], newItems: OrderItem[]): Promise<Order> => {
     
     // 1. Busca dados atuais do pedido
-    const resOrder = await fetch(`${API_URL}/orders?id=${orderId}`);
+    const resOrder = await safeFetch(`${API_URL}/orders?id=${orderId}`);
     const dataOrder = await resOrder.json();
     const currentOrder = dataOrder[0];
     
@@ -156,7 +167,7 @@ export const saveOrderPicking = async (orderId: string, oldItems: OrderItem[], n
     const newFinalValue = Math.max(0, newSubtotalValue - discountAmount);
 
     // 4. Atualiza o Pedido na API
-    const updateRes = await fetch(`${API_URL}/orders/${orderId}`, {
+    const updateRes = await safeFetch(`${API_URL}/orders/${orderId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -167,7 +178,6 @@ export const saveOrderPicking = async (orderId: string, oldItems: OrderItem[], n
         })
     });
     
-    if (!updateRes.ok) throw new Error("Erro ao atualizar pedido");
     const updatedRow = await updateRes.json();
 
     // 5. Calcula diferença e atualiza estoque
@@ -236,8 +246,7 @@ export const saveOrderPicking = async (orderId: string, oldItems: OrderItem[], n
 // --- REP PRICES ---
 export const getRepPrices = async (repId: string): Promise<RepPrice[]> => {
   try {
-      const res = await fetch(`${API_URL}/rep_prices?rep_id=${repId}`);
-      if (!res.ok) return [];
+      const res = await safeFetch(`${API_URL}/rep_prices?rep_id=${repId}`);
       const data = await res.json();
       return data.map((d: any) => ({
         id: d.id,
@@ -251,7 +260,7 @@ export const getRepPrices = async (repId: string): Promise<RepPrice[]> => {
 };
 
 export const upsertRepPrice = async (priceData: RepPrice): Promise<void> => {
-  const res = await fetch(`${API_URL}/rep_prices`, {
+  await safeFetch(`${API_URL}/rep_prices`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -260,7 +269,6 @@ export const upsertRepPrice = async (priceData: RepPrice): Promise<void> => {
         price: priceData.price
     })
   });
-  if (!res.ok) throw new Error("Erro ao salvar preço");
 };
 
 // --- CLIENTS ---
@@ -269,8 +277,7 @@ export const getClients = async (repId?: string): Promise<Client[]> => {
   if (repId) url += `?rep_id=${repId}`;
   
   try {
-      const res = await fetch(url);
-      if (!res.ok) return [];
+      const res = await safeFetch(url);
       const data = await res.json();
       return data.map((row: any) => ({
         id: row.id,
@@ -293,12 +300,11 @@ export const addClient = async (client: Client): Promise<void> => {
     state: client.state
   };
 
-  const res = await fetch(`${API_URL}/clients`, {
+  await safeFetch(`${API_URL}/clients`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(dbClient)
   });
-  if (!res.ok) throw new Error("Erro ao adicionar cliente");
 };
 
 export const updateClient = async (updatedClient: Client): Promise<void> => {
@@ -310,12 +316,11 @@ export const updateClient = async (updatedClient: Client): Promise<void> => {
     state: updatedClient.state
   };
 
-  const res = await fetch(`${API_URL}/clients/${updatedClient.id}`, {
+  await safeFetch(`${API_URL}/clients/${updatedClient.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(dbClient)
   });
-  if (!res.ok) throw new Error("Erro ao atualizar cliente");
 };
 
 export const deleteClient = async (id: string): Promise<void> => {
@@ -323,7 +328,7 @@ export const deleteClient = async (id: string): Promise<void> => {
   if (!res.ok) {
       const err = await res.json();
       if (err.message === 'foreign key constraint') {
-          throw new Error("foreign key constraint");
+          throw new Error("Não é possível excluir: Cliente possui pedidos vinculados.");
       }
       throw new Error("Erro ao deletar cliente");
   }
@@ -363,8 +368,7 @@ const mapOrderFromApi = (row: any): Order => {
 
 export const getOrders = async (): Promise<Order[]> => {
   try {
-      const res = await fetch(`${API_URL}/orders`);
-      if (!res.ok) return [];
+      const res = await safeFetch(`${API_URL}/orders`);
       const data = await res.json();
       return data.map(mapOrderFromApi);
   } catch (e) { return []; }
@@ -375,7 +379,7 @@ const checkRomaneioExists = async (romaneio: string, excludeOrderId?: string): P
     let url = `${API_URL}/orders?romaneio=${romaneio}`;
     if (excludeOrderId) url += `&excludeId=${excludeOrderId}`;
     
-    const res = await fetch(url);
+    const res = await safeFetch(url);
     const data = await res.json();
     return data && data.length > 0;
 };
@@ -430,14 +434,12 @@ export const addOrder = async (order: Omit<Order, 'displayId'>): Promise<Order |
     final_total_value: orderWithSeq.finalTotalValue
   };
 
-  const res = await fetch(`${API_URL}/orders`, {
+  await safeFetch(`${API_URL}/orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(dbOrder)
   });
   
-  if (!res.ok) throw new Error("Erro desconhecido ao salvar no banco");
-
   try {
       await updateStockOnOrderCreation(orderWithSeq.items);
   } catch (err) {
@@ -451,16 +453,15 @@ export const updateOrderRomaneio = async (id: string, romaneio: string): Promise
   const exists = await checkRomaneioExists(romaneio, id);
   if (exists) throw new Error(`O Romaneio nº ${romaneio} já existe em outro pedido.`);
 
-  const res = await fetch(`${API_URL}/orders/${id}`, {
+  await safeFetch(`${API_URL}/orders/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ romaneio })
   });
-  if (!res.ok) throw new Error("Erro ao atualizar romaneio");
 };
 
 export const updateOrderStatus = async (id: string, status: 'open' | 'printed'): Promise<void> => {
-  await fetch(`${API_URL}/orders/${id}`, {
+  await safeFetch(`${API_URL}/orders/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status })
